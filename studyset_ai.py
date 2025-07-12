@@ -1,13 +1,11 @@
 from fpdf import FPDF
 import base64
-from openai import OpenAI
+import openai
 import streamlit as st
 import fitz
 
-# Page setup
 st.set_page_config(page_title="StudySet AI")
 
-# Google site verification meta tag
 st.markdown(
     """
     <meta name="google-site-verification" content="3nUbKNy7gdD9QJ-_H2NjrHTj_W5pHf5d-GiVQDz4ft4">
@@ -15,18 +13,16 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Initialize OpenAI client
-client = OpenAI(api_key=st.secrets["openai_api_key"])
+# Use OpenAI client
+client = openai.OpenAI(api_key=st.secrets["openai_api_key"])
 
-# Function to extract text from uploaded PDF
 def extract_text(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
     text = ""
     for page in doc:
         text += page.get_text()
-    return text
+    return text[:3000]  # Limit to 3000 characters to avoid hitting limits
 
-# Function to generate notes, MCQs, and flashcards using OpenAI
 def generate_study_material(text):
     prompt = f"""
     Summarize the following chapter:\n{text}
@@ -36,13 +32,22 @@ def generate_study_material(text):
     - 5 MCQs with 4 options and correct answers
     - 5 flashcards (Q&A format)
     """
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content
 
-# Function to create downloadable PDF
+    except openai.RateLimitError:
+        return "⚠️ OpenAI Rate Limit Reached. Please wait 1–2 minutes and try again."
+
+    except openai.NotFoundError:
+        return "❌ Invalid model or API key. Make sure you're using `gpt-3.5-turbo` and billing is enabled."
+
+    except Exception as e:
+        return f"❌ Unexpected error: {str(e)}"
+
 def create_pdf(answer_text):
     pdf = FPDF()
     pdf.add_page()
@@ -50,11 +55,11 @@ def create_pdf(answer_text):
     for line in answer_text.split('\n'):
         pdf.multi_cell(0, 10, line)
     pdf.output("studyset_output.pdf")
+
     with open("studyset_output.pdf", "rb") as f:
         base64_pdf = base64.b64encode(f.read()).decode("utf-8")
     return base64_pdf
 
-# Streamlit UI
 st.title("📘 StudySet AI - Notes, MCQs & Flashcards Generator")
 streamlit_pdf = st.file_uploader("📤 Upload your chapter PDF", type="pdf")
 
