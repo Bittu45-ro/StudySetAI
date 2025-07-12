@@ -1,14 +1,13 @@
 from fpdf import FPDF
 import base64
-import openai
+from openai import OpenAI
 import streamlit as st
 import fitz
-import os
 
-import streamlit as st
-
+# Page setup
 st.set_page_config(page_title="StudySet AI")
 
+# Google site verification meta tag
 st.markdown(
     """
     <meta name="google-site-verification" content="3nUbKNy7gdD9QJ-_H2NjrHTj_W5pHf5d-GiVQDz4ft4">
@@ -16,10 +15,10 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# Initialize OpenAI client
+client = OpenAI(api_key=st.secrets["openai_api_key"])
 
-openai.api_key = st.secrets["openai_api_key"]
-
-
+# Function to extract text from uploaded PDF
 def extract_text(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
     text = ""
@@ -27,6 +26,7 @@ def extract_text(pdf_file):
         text += page.get_text()
     return text
 
+# Function to generate notes, MCQs, and flashcards using OpenAI
 def generate_study_material(text):
     prompt = f"""
     Summarize the following chapter:\n{text}
@@ -36,27 +36,25 @@ def generate_study_material(text):
     - 5 MCQs with 4 options and correct answers
     - 5 flashcards (Q&A format)
     """
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}]
     )
-    return response['choices'][0]['message']['content']
+    return response.choices[0].message.content
+
+# Function to create downloadable PDF
 def create_pdf(answer_text):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-
-    # Split the AI-generated text into lines and write to PDF
     for line in answer_text.split('\n'):
         pdf.multi_cell(0, 10, line)
-
     pdf.output("studyset_output.pdf")
-
     with open("studyset_output.pdf", "rb") as f:
         base64_pdf = base64.b64encode(f.read()).decode("utf-8")
-
     return base64_pdf
 
+# Streamlit UI
 st.title("📘 StudySet AI - Notes, MCQs & Flashcards Generator")
 streamlit_pdf = st.file_uploader("📤 Upload your chapter PDF", type="pdf")
 
